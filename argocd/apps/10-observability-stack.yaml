@@ -10,7 +10,7 @@ metadata:
 spec:
   project: observability
   source:
-    repoURL: https://github.com/<your-github-org-or-user>/observability-gitops.git
+    repoURL: https://github.com/vonbolfos/motstack/observability-gitops.git
     targetRevision: main
     path: charts/observability-stack
     helm:

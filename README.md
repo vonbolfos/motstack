@@ -59,7 +59,7 @@ this Application resource lives on," i.e. the workstation, not Talos).
    then register the Talos cluster as a remote target
    (`argocd cluster add --name observability-cluster`).
 3. Push this repo to your own GitHub repo. Then, everywhere you see
-   `<your-github-org-or-user>` — `argocd/project-observability.yaml`,
+   `vonbolfos/motstack` — `argocd/project-observability.yaml`,
    `argocd/root-app.yaml`, `argocd/apps/10-observability-stack.yaml` —
    replace it with your actual org/user. If you named the registered
    Talos cluster something other than `observability-cluster`, update
