@@ -1,0 +1,47 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: longhorn
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-10"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: observability
+  source:
+    repoURL: https://charts.longhorn.io
+    chart: longhorn
+    targetRevision: ">=1.7.0"
+    helm:
+      values: |
+        defaultSettings:
+          # 2 workers -> 2 copies of every volume. This is what actually
+          # gets you "survive one node dying" instead of a single local
+          # disk with no copies.
+          defaultReplicaCount: 2
+          # Talos root filesystem is ephemeral/overlay; point Longhorn's
+          # default data path at the bind-mounted path from the worker
+          # Longhorn patch (talos/README.md).
+          defaultDataPath: /var/lib/longhorn
+        persistence:
+          defaultClassReplicaCount: 2
+        # No explicit node selector/toleration needed to keep Longhorn's
+        # components off the control-plane node: it's tainted NoSchedule
+        # by default (talos/README.md) and Longhorn's extensions were
+        # only baked into the worker install image, so it can't run
+        # there anyway.
+  destination:
+    # The Talos cluster, reached via the remote connection registered
+    # in workstation/README.md (`argocd cluster add --name
+    # observability-cluster`) — NOT the local kubeadm cluster ArgoCD
+    # itself runs on. Longhorn's actual pods/CRDs/storage need to land
+    # on Talos.
+    name: observability-cluster
+    namespace: longhorn-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

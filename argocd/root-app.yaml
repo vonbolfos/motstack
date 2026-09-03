@@ -1,0 +1,30 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: root-app
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: observability
+  source:
+    # TODO: replace with your fork/repo (matches project-observability.yaml)
+    repoURL: https://github.com/<your-github-org-or-user>/observability-gitops.git
+    targetRevision: main
+    path: argocd/apps
+    directory:
+      recurse: true
+  destination:
+    # The local kubeadm cluster ArgoCD runs on (the workstation VM) —
+    # this Application only needs to create other Application resources
+    # here, which ArgoCD then deploys onto the Talos cluster per each
+    # child app's own destination: block. This one doesn't change even
+    # though everything it manages lives on Talos.
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

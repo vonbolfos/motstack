@@ -1,0 +1,50 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: observability
+  namespace: argocd
+spec:
+  description: >
+    Storage plus the Grafana/Prometheus/Loki/Tempo stack, deployed onto
+    the Talos cluster from ArgoCD running on the workstation VM. Scoped
+    so a misconfigured Application here can't touch anything outside
+    these namespaces on either cluster.
+
+  sourceRepos:
+    - https://github.com/<your-github-org-or-user>/observability-gitops.git
+    - https://charts.longhorn.io
+    - https://prometheus-community.github.io/helm-charts
+    - https://grafana-community.github.io/helm-charts
+
+  destinations:
+    # The local kubeadm cluster ArgoCD itself runs on (the workstation
+    # VM) — this is where Application/AppProject CRDs live, regardless
+    # of which cluster the resources they describe actually get
+    # deployed to.
+    - namespace: argocd
+      server: https://kubernetes.default.svc
+    # The Talos cluster, registered via `argocd cluster add --name
+    # observability-cluster` in workstation/README.md. Matched by name,
+    # not server URL, since that name is what argocd/apps/*.yaml
+    # reference in their destination: blocks.
+    - namespace: longhorn-system
+      name: observability-cluster
+    - namespace: observability
+      name: observability-cluster
+
+  # Cluster-scoped resources Longhorn's controllers legitimately need.
+  # Anything not listed here is blocked even if a synced manifest tries
+  # to create it.
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace
+    - group: apiextensions.k8s.io
+      kind: CustomResourceDefinition
+    - group: storage.k8s.io
+      kind: StorageClass
+    - group: rbac.authorization.k8s.io
+      kind: ClusterRole
+    - group: rbac.authorization.k8s.io
+      kind: ClusterRoleBinding
+    - group: longhorn.io
+      kind: "*"

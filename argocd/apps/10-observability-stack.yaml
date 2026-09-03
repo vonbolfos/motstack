@@ -1,0 +1,35 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: observability-stack
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: observability
+  source:
+    repoURL: https://github.com/<your-github-org-or-user>/observability-gitops.git
+    targetRevision: main
+    path: charts/observability-stack
+    helm:
+      valueFiles:
+        - values.yaml
+  destination:
+    # Same as 00-longhorn.yaml — the Talos cluster by its registered
+    # name, not the local kubeadm cluster ArgoCD runs on.
+    name: observability-cluster
+    namespace: observability
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 3m

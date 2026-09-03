@@ -1,0 +1,194 @@
+# =============================================================================
+# Flip `enabled: true/false` per component, commit, push. ArgoCD (selfHeal +
+# automated prune) reconciles the cluster to match within a few minutes.
+#
+# Before your first real sync: `helm show values <repo>/<chart>` for the
+# versions Chart.yaml resolves to, and diff against this file. Field names
+# shift between major chart versions — see the top-level README.
+#
+# Kept deliberately minimal: Longhorn for storage, no cert-manager/TLS,
+# no Sealed Secrets. See the README's "What's deliberately not here"
+# section for what that trades away and how to add it back.
+#
+# Retention: 30 days on both Prometheus and Loki, sized to the "Medium"
+# scenario in docs/vm-sizing.md — see that doc for the math and for
+# Small/Large alternatives if your actual series count / log volume
+# differs (it's a real guess without knowing your workload).
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Prometheus (+ Alertmanager, node-exporter, kube-state-metrics, Operator)
+# -----------------------------------------------------------------------------
+kube-prometheus-stack:
+  enabled: true
+
+  # Using the standalone `grafana:` block below instead, so this stays off
+  # to avoid deploying Grafana twice.
+  grafana:
+    enabled: false
+
+  prometheus:
+    prometheusSpec:
+      retention: 30d
+      resources:
+        requests:
+          cpu: 250m
+          memory: 512Mi
+        limits:
+          memory: 1Gi
+      storageSpec:
+        volumeClaimTemplate:
+          spec:
+            storageClassName: longhorn
+            accessModes: ["ReadWriteOnce"]
+            resources:
+              requests:
+                # Medium tier, ~50k active series @ 30d — see docs/vm-sizing.md
+                storage: 50Gi
+
+  alertmanager:
+    alertmanagerSpec:
+      storage:
+        volumeClaimTemplate:
+          spec:
+            storageClassName: longhorn
+            accessModes: ["ReadWriteOnce"]
+            resources:
+              requests:
+                storage: 5Gi
+
+  prometheusOperator:
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+
+# -----------------------------------------------------------------------------
+# Grafana
+# -----------------------------------------------------------------------------
+grafana:
+  enabled: true
+
+  adminUser: admin
+  # Plain text by design here (no Sealed Secrets in this setup — see
+  # README). Change this from the default, and don't reuse a password
+  # you use anywhere else.
+  adminPassword: changeme
+
+  persistence:
+    enabled: true
+    storageClassName: longhorn
+    size: 5Gi
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+  # No Ingress — reach this via `kubectl port-forward` (see README).
+  # Service names below follow the release name Helm derives for this
+  # umbrella chart ("observability-stack-<subchart>"); confirm with
+  # `kubectl -n observability get svc` after first sync and adjust if
+  # your release name differs.
+  datasources:
+    datasources.yaml:
+      apiVersion: 1
+      datasources:
+        - name: Prometheus
+          type: prometheus
+          url: http://observability-stack-kube-prometheus-prometheus.observability.svc.cluster.local:9090
+          access: proxy
+          isDefault: true
+        - name: Loki
+          type: loki
+          url: http://observability-stack-loki-gateway.observability.svc.cluster.local
+          access: proxy
+        - name: Tempo
+          type: tempo
+          url: http://observability-stack-tempo.observability.svc.cluster.local:3100
+          access: proxy
+
+# -----------------------------------------------------------------------------
+# Loki (monolithic / SingleBinary — right-sized for a 2-worker cluster)
+# -----------------------------------------------------------------------------
+loki:
+  enabled: true
+  deploymentMode: SingleBinary
+
+  loki:
+    auth_enabled: false
+    commonConfig:
+      replication_factor: 1
+    storage:
+      type: filesystem
+    schemaConfig:
+      configs:
+        - from: "2024-01-01"
+          store: tsdb
+          object_store: filesystem
+          schema: v13
+          index:
+            prefix: index_
+            period: 24h
+    # Without this, Loki's default retention is unlimited — nothing
+    # gets deleted, ever, and the PVC just fills up over time. This is
+    # what actually enforces the 30 days: retention_period alone only
+    # affects query-time filtering, retention_enabled is what makes the
+    # compactor actually delete old chunks.
+    limits_config:
+      retention_period: 720h   # 30 days
+    compactor:
+      retention_enabled: true
+
+  # Deliberately 1 replica. With `storage.type: filesystem`, each
+  # replica's index and chunks live on its own disk — a second replica
+  # wouldn't share that state, so queries could silently miss data
+  # depending which pod served them. Multi-replica Loki needs a shared
+  # object store behind it. Node-level durability here comes from
+  # Longhorn (2x replicated block storage) under this single instance's
+  # PVC, not from running multiple Loki pods.
+  singleBinary:
+    replicas: 1
+    persistence:
+      enabled: true
+      storageClass: longhorn
+      # Medium tier, ~1.5GB/day raw ingest @ 30d — see docs/vm-sizing.md
+      size: 40Gi
+    resources:
+      requests:
+        cpu: 200m
+        memory: 512Mi
+
+  # Not used in SingleBinary mode — zeroed out so the chart doesn't also
+  # try to deploy the microservice-mode components.
+  read:
+    replicas: 0
+  write:
+    replicas: 0
+  backend:
+    replicas: 0
+
+  gateway:
+    enabled: true
+
+# -----------------------------------------------------------------------------
+# Tempo (monolithic mode)
+# -----------------------------------------------------------------------------
+tempo:
+  enabled: true
+
+  tempo:
+    storage:
+      trace:
+        backend: local
+        local:
+          path: /var/tempo/traces
+    persistence:
+      enabled: true
+      storageClassName: longhorn
+      size: 15Gi
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
