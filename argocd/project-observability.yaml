@@ -29,7 +29,7 @@ spec:
     # reference in their destination: blocks.
     - namespace: longhorn-system
       name: observability-cluster
-    - namespace: observability
+    - namespace: default
       name: observability-cluster
 
   # Cluster-scoped resources Longhorn's controllers legitimately need.
