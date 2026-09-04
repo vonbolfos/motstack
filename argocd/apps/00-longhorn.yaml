@@ -31,6 +31,8 @@ spec:
         # by default (talos/README.md) and Longhorn's extensions were
         # only baked into the worker install image, so it can't run
         # there anyway.
+        preUpgradeChecker:
+          jobEnabled: false
   destination:
     # The Talos cluster, reached via the remote connection registered
     # in workstation/README.md (`argocd cluster add --name
