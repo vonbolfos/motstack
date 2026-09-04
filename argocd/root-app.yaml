@@ -9,7 +9,7 @@ spec:
   project: default
   source:
     # TODO: replace with your fork/repo (matches project-observability.yaml)
-    repoURL: https://github.com/vonbolfos/motstack/observability-gitops.git
+    repoURL: https://github.com/vonbolfos/motstack.git
     targetRevision: main
     path: argocd/apps
     directory:

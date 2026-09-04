@@ -11,7 +11,7 @@ spec:
     these namespaces on either cluster.
 
   sourceRepos:
-    - https://github.com/vonbolfos/motstack/observability-gitops.git
+    - https://github.com/vonbolfos/motstack.git
     - https://charts.longhorn.io
     - https://prometheus-community.github.io/helm-charts
     - https://grafana-community.github.io/helm-charts
