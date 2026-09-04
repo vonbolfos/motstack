@@ -6,7 +6,7 @@ metadata:
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
-  project: observability
+  project: default
   source:
     # TODO: replace with your fork/repo (matches project-observability.yaml)
     repoURL: https://github.com/vonbolfos/motstack/observability-gitops.git
