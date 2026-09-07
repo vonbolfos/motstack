@@ -3,6 +3,11 @@ kind: AppProject
 metadata:
   name: observability
   namespace: argocd
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: observability
+  namespace: argocd
 spec:
   description: >
     Storage plus the Grafana/Prometheus/Loki/Tempo stack, deployed onto
@@ -23,18 +28,27 @@ spec:
       name: observability-cluster
     - namespace: observability
       name: observability-cluster
+    - namespace: kube-system
+      name: observability-cluster
 
   namespaceResourceWhitelist:
     - group: "*"
       kind: "*"
     - group: argoproj.io
       kind: Application
-
   clusterResourceWhitelist:
     - group: "*"
       kind: "*"
     - group: apiextensions.k8s.io
       kind: CustomResourceDefinition
+    - group: rbac.authorization.k8s.io
+      kind: ClusterRole
+    - group: rbac.authorization.k8s.io
+      kind: ClusterRoleBinding
+    - group: admissionregistration.k8s.io
+      kind: ValidatingWebhookConfiguration
+    - group: admissionregistration.k8s.io
+      kind: MutatingWebhookConfiguration
   clusterResourceBlacklist: []
   
   # Cluster-scoped resources Longhorn's controllers legitimately need.
