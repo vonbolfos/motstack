@@ -35,16 +35,9 @@ spec:
   # Cluster-scoped resources Longhorn's controllers legitimately need.
   # Anything not listed here is blocked even if a synced manifest tries
   # to create it.
+  namespaceResourceWhitelist:
+    - group: "*"
+      kind: "*"
   clusterResourceWhitelist:
-    - group: ""
-      kind: Namespace
-    - group: apiextensions.k8s.io
-      kind: CustomResourceDefinition
-    - group: storage.k8s.io
-      kind: StorageClass
-    - group: rbac.authorization.k8s.io
-      kind: ClusterRole
-    - group: rbac.authorization.k8s.io
-      kind: ClusterRoleBinding
-    - group: longhorn.io
+    - group: "*"
       kind: "*"
