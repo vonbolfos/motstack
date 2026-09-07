@@ -20,7 +20,7 @@ spec:
     - https://charts.longhorn.io
     - https://prometheus-community.github.io/helm-charts
     - https://grafana-community.github.io/helm-charts
-
+  
   destinations:
     - namespace: argocd
       server: https://kubernetes.default.svc
@@ -30,12 +30,13 @@ spec:
       name: observability-cluster
     - namespace: kube-system
       name: observability-cluster
-
+  
   namespaceResourceWhitelist:
     - group: "*"
       kind: "*"
     - group: argoproj.io
       kind: Application
+      
   clusterResourceWhitelist:
     - group: "*"
       kind: "*"
@@ -50,7 +51,10 @@ spec:
     - group: admissionregistration.k8s.io
       kind: MutatingWebhookConfiguration
   clusterResourceBlacklist: []
-  
+
+  syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
   # Cluster-scoped resources Longhorn's controllers legitimately need.
   # Anything not listed here is blocked even if a synced manifest tries
   # to create it.
