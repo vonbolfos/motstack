@@ -17,20 +17,22 @@ spec:
     - https://grafana-community.github.io/helm-charts
 
   destinations:
-    # The local kubeadm cluster ArgoCD itself runs on (the workstation
-    # VM) — this is where Application/AppProject CRDs live, regardless
-    # of which cluster the resources they describe actually get
-    # deployed to.
     - namespace: argocd
       server: https://kubernetes.default.svc
-    # The Talos cluster, registered via `argocd cluster add --name
-    # observability-cluster` in workstation/README.md. Matched by name,
-    # not server URL, since that name is what argocd/apps/*.yaml
-    # reference in their destination: blocks.
     - namespace: longhorn-system
       name: observability-cluster
-    - namespace: default
+    - namespace: observability
       name: observability-cluster
+
+  namespaceResourceWhitelist:
+    - group: "*"
+      kind: "*"
+    - group: argoproj.io
+      kind: Application
+  clusterResourceWhitelist:
+    - group: "*"
+      kind: "*"
+  clusterResourceBlacklist: []
 
   # Cluster-scoped resources Longhorn's controllers legitimately need.
   # Anything not listed here is blocked even if a synced manifest tries
