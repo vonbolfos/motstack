@@ -29,11 +29,14 @@ spec:
       kind: "*"
     - group: argoproj.io
       kind: Application
+
   clusterResourceWhitelist:
     - group: "*"
       kind: "*"
+    - group: apiextensions.k8s.io
+      kind: CustomResourceDefinition
   clusterResourceBlacklist: []
-
+  
   # Cluster-scoped resources Longhorn's controllers legitimately need.
   # Anything not listed here is blocked even if a synced manifest tries
   # to create it.
