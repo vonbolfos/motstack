@@ -139,7 +139,7 @@ loki:
       retention_period: 720h   # 30 days
     compactor:
       retention_enabled: true
-
+      delete_request_store: filesystem
   # Deliberately 1 replica. With `storage.type: filesystem`, each
   # replica's index and chunks live on its own disk — a second replica
   # wouldn't share that state, so queries could silently miss data
