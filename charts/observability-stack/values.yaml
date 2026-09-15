@@ -170,7 +170,10 @@ loki:
 
   gateway:
     enabled: true
-
+  chunksCache:
+    enabled: false
+  resultsCache:
+    enabled: false
 # -----------------------------------------------------------------------------
 # Tempo (monolithic mode)
 # -----------------------------------------------------------------------------
