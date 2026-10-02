@@ -1,0 +1,154 @@
+# ---------------------------------------------------------------------------
+# kube-state-metrics subchart configuration
+# ---------------------------------------------------------------------------
+
+kube-state-metrics:
+  enabled: true
+
+alloy:
+  enabled: true
+  fullnameOverride: mot-alloy
+
+  # Identifies this Alloy's own cluster in self-collected telemetry
+  # (used below to stamp a "cluster" label on logs tailed from pods
+  # running on gmt-kdp-aks itself).
+  cluster:
+    name: gmt-kdp-aks
+
+  controller:
+    type: deployment
+    replicas: 4
+    autoscaling:
+      horizontal:
+        enabled: true
+        minReplicas: 4
+        maxReplicas: 10
+        targetCPUUtilizationPercentage: 80
+        targetMemoryUtilizationPercentage: 80
+
+  alloy:
+    stabilityLevel: "experimental"
+    clustering:
+      enabled: true
+    extraEnv:
+      - name: GOMEMLIMIT
+        value: 6800MiB
+    configMap:
+      create: true
+      content: |
+        livedebugging {
+          enabled = false
+        }
+
+        logging {
+          level  = "info"
+          format = "logfmt"
+        }
+
+        // --------------------------------------------------------------------
+        // Metrics Receiver & Exporter (Prometheus Remote Write)
+        // --------------------------------------------------------------------
+        prometheus.receive_http "endpoint" {
+          http {
+            listen_address = "0.0.0.0"
+            listen_port = 9090
+          }
+          forward_to = [prometheus.remote_write.central.receiver]
+        }
+
+        prometheus.remote_write "central" {
+          endpoint {
+            url = "http://{{ .Values.global.backendServices.prometheus }}/api/v1/write"
+            queue_config {
+              max_shards = 10
+              min_shards = 2
+              max_samples_per_send = 2000
+              capacity = 20000
+            }
+          }
+        }
+
+        // --------------------------------------------------------------------
+        // Logs Receiver & Exporter (Loki Push API)
+        // --------------------------------------------------------------------
+        loki.source.api "logs" {
+          http {
+            listen_address = "0.0.0.0"
+            listen_port = 3100
+          }
+          forward_to = [loki.write.central.receiver]
+        }
+
+        loki.write "central" {
+          endpoint {
+            url = "http://{{ .Values.global.backendServices.loki }}/loki/api/v1/push"
+            batch_wait = "1s"
+            batch_size = "1.5MiB"
+          }
+        }
+
+        // --------------------------------------------------------------------
+        // Traces Receiver, Processor, & Exporter (OTLP to Tempo)
+        // --------------------------------------------------------------------
+        otelcol.receiver.otlp "traces" {
+          grpc {
+            endpoint = "0.0.0.0:4317"
+          }
+          http {
+            endpoint = "0.0.0.0:4318"
+          }
+          output {
+            traces = [otelcol.processor.batch.default.input]
+          }
+        }
+
+        otelcol.processor.batch "default" {
+          output {
+            traces = [otelcol.exporter.otlp.tempo.input]
+          }
+        }
+
+        otelcol.exporter.otlp "tempo" {
+          client {
+            endpoint = "{{ .Values.global.backendServices.tempo }}:4317"
+            tls {
+              insecure = true
+            }
+          }
+        }
+
+    resources:
+      requests:
+        cpu: "500m"
+        memory: 7Gi
+      limits:
+        cpu: "4"
+        memory: 8Gi
+
+    extraPorts:
+      - name: metrics-write
+        port: 9090
+        targetPort: 9090
+        protocol: TCP
+      - name: loki-push
+        port: 3100
+        targetPort: 3100
+        protocol: TCP
+      - name: otlp-grpc
+        port: 4317
+        targetPort: 4317
+        protocol: TCP
+      - name: otlp-http
+        port: 4318
+        targetPort: 4318
+        protocol: TCP
+
+  image:
+    pullPolicy: IfNotPresent
+
+  serviceMonitor:
+    enabled: true
+
+  service:
+    enabled: true
+    type: ClusterIP

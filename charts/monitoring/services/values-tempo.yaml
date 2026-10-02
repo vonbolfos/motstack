@@ -1,0 +1,57 @@
+################################################################################
+# Tempo
+################################################################################
+tempo:
+  enabled: true
+  replicas: 1
+
+  service:
+    type: ClusterIP
+
+  persistence:
+    enabled: true
+    storageClassName: longhorn
+    accessModes:
+      - ReadWriteOnce
+    size: 20Gi
+
+  serviceMonitor:
+    enabled: true
+
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 1
+      memory: 2Gi
+
+  tempo:
+    retention: 168h
+    search_enabled: true
+
+    metricsGenerator:
+      enabled: true
+
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: "0.0.0.0:4317"
+          http:
+            endpoint: "0.0.0.0:4318"
+
+      jaeger:
+        protocols:
+          grpc:
+            endpoint: "0.0.0.0:14250"
+          thrift_binary:
+            endpoint: "0.0.0.0:6832"
+          thrift_compact:
+            endpoint: "0.0.0.0:6831"
+          thrift_http:
+            endpoint: "0.0.0.0:14268"
+
+      zipkin: {}
+
+      opencensus: {}

@@ -1,0 +1,16 @@
+{{- if (.Values.networkPolicy.enabled | default false) }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: monitoring
+  namespace: {{ .Values.global.namespace }}
+spec:
+  podSelector: {}
+  ingress:
+    - {}
+  egress:
+    - {}
+  policyTypes:
+    - Ingress
+    - Egress
+{{- end }}

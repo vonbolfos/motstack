@@ -1,0 +1,46 @@
+################################################################################
+# Global
+################################################################################
+
+#global:
+  #namespace: kdp-mot
+  #domain: gnssm.tolling.kapsch-dev.net
+  #storageClass: managed-csi
+  #ingressClassName: nginx
+  #clusterIssuer: letsencrypt-production
+
+################################################################################
+# Persistence
+################################################################################
+
+# grafana:
+#   replicas: 2
+#   persistence:
+#     size: 50Gi
+#   ingress:
+#     enabled: true
+
+# prometheus:
+#   server:
+#     replicaCount: 2
+#     retention: 90d
+#     persistentVolume:
+#       size: 250Gi
+#     ingress:
+#       enabled: true
+      
+# alertmanager:
+#   replicaCount: 2
+#   persistence:
+#     size: 50Gi
+#   ingress:
+#     enabled: true
+
+# loki:
+#   singleBinary:
+#     replicas: 2
+#   loki:
+#     persistence:
+#       size: 500Gi
+#   limits_config:
+#      retention_period: 90d

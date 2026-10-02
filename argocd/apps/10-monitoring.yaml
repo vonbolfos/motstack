@@ -1,0 +1,51 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: monitoring
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: observability
+  source:
+    repoURL: https://github.com/vonbolfos/motstack.git
+    targetRevision: main
+    path: charts/monitoring
+    helm:
+      valueFiles:
+        - values.yaml
+        - values-homelab.yaml
+        - services/values-grafana.yaml
+        - services/values-prometheus.yaml
+        - services/values-loki.yaml
+        - services/values-tempo.yaml
+        # services/values-alloy.yaml deliberately NOT included — Alloy is
+        # disabled (alloy.enabled: false in values-homelab.yaml), so its
+        # values file is never loaded. Left in the chart directory
+        # unmodified as reference in case you want it later.
+  destination:
+    name: observability-cluster
+    namespace: monitoring
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true   # kube-prometheus-stack's (aliased "dashboards") CRDs hit the same 262144-byte annotation limit as before
+    # Talos defaults every namespace to the "baseline" Pod Security
+    # level. prometheus-node-exporter (from the "dashboards" dependency)
+    # needs hostPath/hostNetwork/hostPID — same wall we hit with
+    # Longhorn and the original observability-stack's node-exporter,
+    # same fix.
+    managedNamespaceMetadata:
+      labels:
+        pod-security.kubernetes.io/enforce: privileged
+    retry:
+      limit: 5
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 3m

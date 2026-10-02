@@ -1,0 +1,30 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ .Release.Name }}-grafana
+  namespace: {{ .Values.global.namespace }}
+  annotations:
+    cert-manager.io/cluster-issuer: {{ .Values.global.clusterIssuer }}
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+{{- if .Values.global.externalDNS.enabled }}
+    external-dns.alpha.kubernetes.io/target: {{ .Values.global.externalDNS.target }}
+{{- end }}
+spec:
+  ingressClassName: {{ .Values.global.ingressClassName }}
+  tls:
+    - hosts:
+        - {{ .Values.global.hosts.grafana }}.{{ .Values.global.domain }}
+      secretName: grafana-tls
+  rules:
+    - host: {{ .Values.global.hosts.grafana }}.{{ .Values.global.domain }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ .Values.global.backendServices.grafana }}
+                port:
+                  number: 80

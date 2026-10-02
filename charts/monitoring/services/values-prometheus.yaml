@@ -1,0 +1,591 @@
+prometheus:
+  enabled: true
+  kube-state-metrics:
+    enabled: true
+  prometheus-node-exporter:
+    enabled: true
+  prometheus-pushgateway:
+    enabled: false
+  alertmanager:
+    enabled: false
+    config:
+      global:
+        resolve_timeout: 5m
+      route:
+        receiver: alertops
+        group_by:
+          - alertname
+          - namespace
+          - cluster
+        group_wait: 30s
+        group_interval: 5m
+        repeat_interval: 4h
+      receivers:
+        - name: alertops
+          webhook_configs:
+            - url: "https://notify.alertops.com/POSTAlert/612fd4a5-7821-40e2-aa1f-a8432cfccc71/Grafana"
+              send_resolved: true
+
+  serverFiles:
+    prometheus.yml:
+      rule_files:
+        - /etc/config/recording_rules.yml
+        - /etc/config/alerting_rules.yml
+        - /etc/prometheus/rules/*.yml
+      scrape_configs:
+        - job_name: coredns
+          static_configs:
+            - targets:
+              - coredns-metrics.kube-system.svc.cluster.local:9153
+              labels:
+                cluster: central
+        - job_name: argocd
+          static_configs:
+            - targets:
+              - argocd-metrics.kdp-argocd.svc.cluster.local:8082
+              labels:
+                cluster: central
+
+    #recording_rules.yml:
+    #  groups:
+    #  - name: k8s.rules.container_cpu_usage_seconds_total
+    #    rules:
+    #    - expr: "sum by (cluster, namespace, pod, container) (\n  rate(container_cpu_usage_seconds_total{job=\"\
+    #        kubernetes-nodes-cadvisor\", metrics_path=\"/metrics/cadvisor\", image!=\"\
+    #        \"}[5m])\n) * on (cluster, namespace, pod) group_left(node) topk by (cluster,\
+    #        \ namespace, pod) (\n  1, max by (cluster, namespace, pod, node) (kube_pod_info{node!=\"\
+    #        \"})\n)"
+    #      record: node_namespace_pod_container:container_cpu_usage_seconds_total:sum_rate5m
+    #    - expr: "sum by (cluster, namespace, pod, container) (\n  irate(container_cpu_usage_seconds_total{job=\"\
+    #        kubernetes-nodes-cadvisor\", metrics_path=\"/metrics/cadvisor\", image!=\"\
+    #        \"}[5m])\n) * on (cluster, namespace, pod) group_left(node) topk by (cluster,\
+    #        \ namespace, pod) (\n  1, max by (cluster, namespace, pod, node) (kube_pod_info{node!=\"\
+    #        \"})\n)"
+    #      record: node_namespace_pod_container:container_cpu_usage_seconds_total:sum_irate
+    #  - name: k8s.rules.container_memory_cache
+    #    rules:
+    #    - expr: "container_memory_cache{job=\"kubernetes-nodes-cadvisor\", metrics_path=\"\
+    #        /metrics/cadvisor\", image!=\"\"}\n* on (cluster, namespace, pod) group_left(node)\
+    #        \ topk by (cluster, namespace, pod) (1,\n  max by (cluster, namespace,\
+    #        \ pod, node) (kube_pod_info{node!=\"\"})\n)"
+    #      record: node_namespace_pod_container:container_memory_cache
+    #  - name: k8s.rules.container_memory_rss
+    #    rules:
+    #    - expr: "container_memory_rss{job=\"kubernetes-nodes-cadvisor\", metrics_path=\"\
+    #        /metrics/cadvisor\", image!=\"\"}\n* on (cluster, namespace, pod) group_left(node)\
+    #        \ topk by (cluster, namespace, pod) (1,\n  max by (cluster, namespace,\
+    #        \ pod, node) (kube_pod_info{node!=\"\"})\n)"
+    #      record: node_namespace_pod_container:container_memory_rss
+    #  - name: k8s.rules.container_memory_swap
+    #    rules:
+    #    - expr: "container_memory_swap{job=\"kubernetes-nodes-cadvisor\", metrics_path=\"\
+    #        /metrics/cadvisor\", image!=\"\"}\n* on (cluster, namespace, pod) group_left(node)\
+    #        \ topk by (cluster, namespace, pod) (1,\n  max by (cluster, namespace,\
+    #        \ pod, node) (kube_pod_info{node!=\"\"})\n)"
+    #      record: node_namespace_pod_container:container_memory_swap
+    #  - name: k8s.rules.container_memory_working_set_bytes
+    #    rules:
+    #    - expr: "container_memory_working_set_bytes{job=\"kubernetes-nodes-cadvisor\"\
+    #        , metrics_path=\"/metrics/cadvisor\", image!=\"\"}\n* on (cluster, namespace,\
+    #        \ pod) group_left(node) topk by (cluster, namespace, pod) (1,\n  max by\
+    #        \ (cluster, namespace, pod, node) (kube_pod_info{node!=\"\"})\n)"
+    #      record: node_namespace_pod_container:container_memory_working_set_bytes
+    #  - name: k8s.rules.container_resource
+    #    rules:
+    #    - expr: "kube_pod_container_resource_requests{resource=\"memory\",job=\"kube-state-metrics\"\
+    #        }  * on (namespace, pod, cluster)\ngroup_left() max by (namespace, pod,\
+    #        \ cluster) (\n  (kube_pod_status_phase{phase=~\"Pending|Running\"} ==\
+    #        \ 1)\n)"
+    #      record: cluster:namespace:pod_memory:active:kube_pod_container_resource_requests
+    #    - expr: "sum by (namespace, cluster) (\n    sum by (namespace, pod, cluster)\
+    #        \ (\n        max by (namespace, pod, container, cluster) (\n         \
+    #        \ kube_pod_container_resource_requests{resource=\"memory\",job=\"kube-state-metrics\"\
+    #        }\n        ) * on (namespace, pod, cluster) group_left() max by (namespace,\
+    #        \ pod, cluster) (\n          kube_pod_status_phase{phase=~\"Pending|Running\"\
+    #        } == 1\n        )\n    )\n)"
+    #      record: namespace_memory:kube_pod_container_resource_requests:sum
+    #    - expr: "kube_pod_container_resource_requests{resource=\"cpu\",job=\"kube-state-metrics\"\
+    #        }  * on (namespace, pod, cluster)\ngroup_left() max by (namespace, pod,\
+    #        \ cluster) (\n  (kube_pod_status_phase{phase=~\"Pending|Running\"} ==\
+    #        \ 1)\n)"
+    #      record: cluster:namespace:pod_cpu:active:kube_pod_container_resource_requests
+    #    - expr: "sum by (namespace, cluster) (\n    sum by (namespace, pod, cluster)\
+    #        \ (\n        max by (namespace, pod, container, cluster) (\n         \
+    #        \ kube_pod_container_resource_requests{resource=\"cpu\",job=\"kube-state-metrics\"\
+    #        }\n        ) * on (namespace, pod, cluster) group_left() max by (namespace,\
+    #        \ pod, cluster) (\n          kube_pod_status_phase{phase=~\"Pending|Running\"\
+    #        } == 1\n        )\n    )\n)"
+    #      record: namespace_cpu:kube_pod_container_resource_requests:sum
+    #    - expr: "kube_pod_container_resource_limits{resource=\"memory\",job=\"kube-state-metrics\"\
+    #        }  * on (namespace, pod, cluster)\ngroup_left() max by (namespace, pod,\
+    #        \ cluster) (\n  (kube_pod_status_phase{phase=~\"Pending|Running\"} ==\
+    #        \ 1)\n)"
+    #      record: cluster:namespace:pod_memory:active:kube_pod_container_resource_limits
+    #    - expr: "sum by (namespace, cluster) (\n    sum by (namespace, pod, cluster)\
+    #        \ (\n        max by (namespace, pod, container, cluster) (\n         \
+    #        \ kube_pod_container_resource_limits{resource=\"memory\",job=\"kube-state-metrics\"\
+    #        }\n        ) * on (namespace, pod, cluster) group_left() max by (namespace,\
+    #        \ pod, cluster) (\n          kube_pod_status_phase{phase=~\"Pending|Running\"\
+    #        } == 1\n        )\n    )\n)"
+    #      record: namespace_memory:kube_pod_container_resource_limits:sum
+    #    - expr: "kube_pod_container_resource_limits{resource=\"cpu\",job=\"kube-state-metrics\"\
+    #        }  * on (namespace, pod, cluster)\ngroup_left() max by (namespace, pod,\
+    #        \ cluster) (\n (kube_pod_status_phase{phase=~\"Pending|Running\"} == 1)\n\
+    #        \ )"
+    #      record: cluster:namespace:pod_cpu:active:kube_pod_container_resource_limits
+    #    - expr: "sum by (namespace, cluster) (\n    sum by (namespace, pod, cluster)\
+    #        \ (\n        max by (namespace, pod, container, cluster) (\n         \
+    #        \ kube_pod_container_resource_limits{resource=\"cpu\",job=\"kube-state-metrics\"\
+    #        }\n        ) * on (namespace, pod, cluster) group_left() max by (namespace,\
+    #        \ pod, cluster) (\n          kube_pod_status_phase{phase=~\"Pending|Running\"\
+    #        } == 1\n        )\n    )\n)"
+    #      record: namespace_cpu:kube_pod_container_resource_limits:sum
+    #  - name: k8s.rules.pod_owner
+    #    rules:
+    #    - expr: "max by (cluster, namespace, workload, pod) (\n  label_replace(\n\
+    #        \    label_replace(\n      kube_pod_owner{job=\"kube-state-metrics\",\
+    #        \ owner_kind=\"ReplicaSet\"},\n      \"replicaset\", \"$1\", \"owner_name\"\
+    #        , \"(.*)\"\n    ) * on (cluster, replicaset, namespace) group_left(owner_name)\
+    #        \ topk by (cluster, replicaset, namespace) (\n      1, max by (cluster,\
+    #        \ replicaset, namespace, owner_name) (\n        kube_replicaset_owner{job=\"\
+    #        kube-state-metrics\", owner_kind=\"\"}\n      )\n    ),\n    \"workload\"\
+    #        , \"$1\", \"replicaset\", \"(.*)\"\n  )\n)"
+    #      labels:
+    #        workload_type: replicaset
+    #      record: namespace_workload_pod:kube_pod_owner:relabel
+    #    - expr: "max by (cluster, namespace, workload, pod) (\n  label_replace(\n\
+    #        \    label_replace(\n      kube_pod_owner{job=\"kube-state-metrics\",\
+    #        \ owner_kind=\"ReplicaSet\"},\n      \"replicaset\", \"$1\", \"owner_name\"\
+    #        , \"(.*)\"\n    ) * on (replicaset, namespace, cluster) group_left(owner_name)\
+    #        \ topk by (cluster, replicaset, namespace) (\n      1, max by (cluster,\
+    #        \ replicaset, namespace, owner_name) (\n        kube_replicaset_owner{job=\"\
+    #        kube-state-metrics\", owner_kind=\"Deployment\"}\n      )\n    ),\n  \
+    #        \  \"workload\", \"$1\", \"owner_name\", \"(.*)\"\n  )\n)"
+    #      labels:
+    #        workload_type: deployment
+    #      record: namespace_workload_pod:kube_pod_owner:relabel
+    #    - expr: "max by (cluster, namespace, workload, pod) (\n  label_replace(\n\
+    #        \    kube_pod_owner{job=\"kube-state-metrics\", owner_kind=\"DaemonSet\"\
+    #        },\n    \"workload\", \"$1\", \"owner_name\", \"(.*)\"\n  )\n)"
+    #      labels:
+    #        workload_type: daemonset
+    #      record: namespace_workload_pod:kube_pod_owner:relabel
+    #    - expr: "max by (cluster, namespace, workload, pod) (\n  label_replace(\n\
+    #        \    kube_pod_owner{job=\"kube-state-metrics\", owner_kind=\"StatefulSet\"\
+    #        },\n  \"workload\", \"$1\", \"owner_name\", \"(.*)\")\n)"
+    #      labels:
+    #        workload_type: statefulset
+    #      record: namespace_workload_pod:kube_pod_owner:relabel
+    #    - expr: "group by (cluster, namespace, workload, pod) (\n  label_join(\n \
+    #        \   group by (cluster, namespace, job_name, pod, owner_name) (\n     \
+    #        \ label_join(\n        kube_pod_owner{job=\"kube-state-metrics\", owner_kind=\"\
+    #        Job\"}\n      , \"job_name\", \"\", \"owner_name\")\n    )\n    * on (cluster,\
+    #        \ namespace, job_name) group_left()\n    group by (cluster, namespace,\
+    #        \ job_name) (\n      kube_job_owner{job=\"kube-state-metrics\", owner_kind=~\"\
+    #        Pod|\"}\n    )\n  , \"workload\", \"\", \"owner_name\")\n)"
+    #      labels:
+    #        workload_type: job
+    #      record: namespace_workload_pod:kube_pod_owner:relabel
+    #    - expr: "max by (cluster, namespace, workload, pod) (\n  label_replace(\n\
+    #        \    kube_pod_owner{job=\"kube-state-metrics\", owner_kind=\"\", owner_name=\"\
+    #        \"},\n  \"workload\", \"$1\", \"pod\", \"(.+)\")\n)"
+    #      labels:
+    #        workload_type: barepod
+    #      record: namespace_workload_pod:kube_pod_owner:relabel
+    #    - expr: "max by (cluster, namespace, workload, pod) (\n  label_replace(\n\
+    #        \    kube_pod_owner{job=\"kube-state-metrics\", owner_kind=\"Node\"},\n\
+    #        \  \"workload\", \"$1\", \"pod\", \"(.+)\")\n)"
+    #      labels:
+    #        workload_type: staticpod
+    #      record: namespace_workload_pod:kube_pod_owner:relabel
+    #    - expr: "group by (cluster, namespace, workload, workload_type, pod) (\n \
+    #        \ label_join(\n    label_join(\n      group by (cluster, namespace, job_name,\
+    #        \ pod) (\n        label_join(\n          kube_pod_owner{job=\"kube-state-metrics\"\
+    #        , owner_kind=\"Job\"}\n        , \"job_name\", \"\", \"owner_name\")\n\
+    #        \      )\n      * on (cluster, namespace, job_name) group_left(owner_kind,\
+    #        \ owner_name)\n      group by (cluster, namespace, job_name, owner_kind,\
+    #        \ owner_name) (\n        kube_job_owner{job=\"kube-state-metrics\", owner_kind!=\"\
+    #        Pod\", owner_kind!=\"\"}\n      )\n    , \"workload\", \"\", \"owner_name\"\
+    #        )\n  , \"workload_type\", \"\", \"owner_kind\")\n\n  OR\n\n  label_replace(\n\
+    #        \    label_replace(\n      label_replace(\n        kube_pod_owner{job=\"\
+    #        kube-state-metrics\", owner_kind=\"ReplicaSet\"}\n        , \"replicaset\"\
+    #        , \"$1\", \"owner_name\", \"(.+)\"\n      )\n      * on (cluster, namespace,\
+    #        \ replicaset) group_left(owner_kind, owner_name)\n      group by (cluster,\
+    #        \ namespace, replicaset, owner_kind, owner_name) (\n        kube_replicaset_owner{job=\"\
+    #        kube-state-metrics\", owner_kind!=\"Deployment\", owner_kind!=\"\"}\n\
+    #        \      )\n    , \"workload\", \"$1\", \"owner_name\", \"(.+)\")\n    OR\n\
+    #        \    label_replace(\n      group by (cluster, namespace, pod, owner_name,\
+    #        \ owner_kind) (\n        kube_pod_owner{job=\"kube-state-metrics\", owner_kind!=\"\
+    #        ReplicaSet\", owner_kind!=\"DaemonSet\", owner_kind!=\"StatefulSet\",\
+    #        \ owner_kind!=\"Job\", owner_kind!=\"Node\", owner_kind!=\"\"}\n     \
+    #        \ )\n      , \"workload\", \"$1\", \"owner_name\", \"(.+)\"\n    )\n \
+    #        \ , \"workload_type\", \"$1\", \"owner_kind\", \"(.+)\")\n)"
+    #      record: namespace_workload_pod:kube_pod_owner:relabel
+  server:
+    global:
+      external_labels:
+        cluster: central
+    extraEnv:
+      - name: GOMEMLIMIT
+        value: 12GiB
+    extraFlags:
+      - web.enable-lifecycle
+      - web.enable-remote-write-receiver
+    replicaCount: 1
+    extraVolumes:
+      - name: recording-rules
+        configMap:
+          name: mot-prometheus-recording-rules
+    extraVolumeMounts:
+      - name: recording-rules
+        mountPath: /etc/prometheus/rules
+    verticalAutoscaler:
+      enabled: false
+    image:
+      pullPolicy: IfNotPresent
+    service:
+      type: ClusterIP
+      servicePort: 80
+    persistentVolume:
+      enabled: true
+      storageClass: longhorn
+      accessModes:
+      - ReadWriteOnce
+      size: 250Gi
+    retention: 30d
+    resources:
+      requests:
+        cpu: '1'
+        memory: 7Gi
+      limits:
+        cpu: '4'
+        memory: 16Gi
+    livenessProbe:
+      initialDelaySeconds: 120
+      periodSeconds: 20
+      timeoutSeconds: 10
+      failureThreshold: 6
+    readinessProbe:
+      initialDelaySeconds: 120
+      periodSeconds: 10
+      timeoutSeconds: 10
+      failureThreshold: 6
+    #extraFlags:
+    #- web.enable-lifecycle
+    #- web.enable-remote-write-receiver
+    ingress:
+      enabled: false
+      ingressClassName: nginx
+      annotations:
+        cert-manager.io/cluster-issuer: letsencrypt-staging
+        external-dns.alpha.kubernetes.io/target: unused.observability.local
+      hosts:
+      - prometheus.observability.local
+      path: /
+      pathType: Prefix
+      tls:
+      - secretName: prometheus-tls
+        hosts:
+        - prometheus.observability.local
+    serviceMonitor:
+      enabled: true
+
+  scrapeConfigs:
+    kubernetes-api-servers:
+      enabled: true
+      kubernetes_sd_configs:
+      - role: endpointslice
+      relabel_configs:
+      - action: keep
+        regex: default;kubernetes;https
+        source_labels:
+        - __meta_kubernetes_namespace
+        - __meta_kubernetes_service_name
+        - __meta_kubernetes_endpointslice_port_name
+      - action: replace
+        target_label: cluster
+        replacement: central
+
+    kubernetes-nodes:
+      enabled: true
+      kubernetes_sd_configs:
+      - role: node
+      relabel_configs:
+      - action: labelmap
+        regex: __meta_kubernetes_node_label_(.+)
+      - action: replace
+        target_label: cluster
+        replacement: central
+
+    kubernetes-nodes-cadvisor:
+      enabled: true
+      kubernetes_sd_configs:
+      - role: node
+      relabel_configs:
+      - action: labelmap
+        regex: __meta_kubernetes_node_label_(.+)
+      - source_labels:
+        - __metrics_path__
+        target_label: metrics_path
+      - action: replace
+        target_label: cluster
+        replacement: central
+
+    prometheus:
+      enabled: true
+      relabel_configs:
+      - action: replace
+        target_label: cluster
+        replacement: central
+
+    kubernetes-pods:
+      enabled: true
+      honor_labels: true
+      kubernetes_sd_configs:
+      - role: pod
+      relabel_configs:
+      # 0. Drop Node Exporter and kube-state-metrics pods to avoid duplicate scraping
+      - action: drop
+        source_labels:
+        - __meta_kubernetes_pod_name
+        regex: .*node-exporter.*|.*kube-state-metrics.*
+
+      # 1. Drop targets annotated with prometheus.io/scrape = false
+      - action: drop
+        regex: "false"
+        source_labels:
+        - __meta_kubernetes_pod_annotation_prometheus_io_scrape
+
+      # 2. Default to Pod IP and container port
+      - action: replace
+        regex: '(.+);(.+)'
+        replacement: '$1:$2'
+        source_labels:
+        - __meta_kubernetes_pod_ip
+        - __meta_kubernetes_pod_container_port_number
+        target_label: __address__
+
+      # 3. Overwrite address if prometheus.io/port annotation is set (IPv6 support)
+      - action: replace
+        regex: (\d+);(([A-Fa-f0-9]{1,4}::?){1,7}[A-Fa-f0-9]{1,4})
+        replacement: '[$2]:$1'
+        source_labels:
+        - __meta_kubernetes_pod_annotation_prometheus_io_port
+        - __meta_kubernetes_pod_ip
+        target_label: __address__
+
+      # 4. Overwrite address if prometheus.io/port annotation is set (IPv4 support)
+      - action: replace
+        regex: (\d+);((([0-9]+?)(\.|$)){4})
+        replacement: $2:$1
+        source_labels:
+        - __meta_kubernetes_pod_annotation_prometheus_io_port
+        - __meta_kubernetes_pod_ip
+        target_label: __address__
+
+      # 5. Overwrite scheme if prometheus.io/scheme annotation is set
+      - action: replace
+        regex: (https?)
+        source_labels:
+        - __meta_kubernetes_pod_annotation_prometheus_io_scheme
+        target_label: __scheme__
+
+      # 6. Overwrite path if prometheus.io/path annotation is set
+      - action: replace
+        regex: (.+)
+        source_labels:
+        - __meta_kubernetes_pod_annotation_prometheus_io_path
+        target_label: __metrics_path__
+
+      # 7. Turn standard Kubernetes pod labels into Prometheus target labels
+      - action: labelmap
+        regex: '__meta_kubernetes_pod_label_(.+)'
+
+      # 8. Standard metadata extractions for query filtering
+      - action: replace
+        source_labels:
+        - __meta_kubernetes_namespace
+        target_label: namespace
+      - action: replace
+        source_labels:
+        - __meta_kubernetes_pod_name
+        target_label: pod
+      - action: replace
+        source_labels:
+        - __meta_kubernetes_pod_node_name
+        target_label: node
+
+      # 9. Drop pods that aren't actively running
+      - action: drop
+        regex: 'Pending|Succeeded|Failed|Completed'
+        source_labels:
+        - __meta_kubernetes_pod_phase
+
+      # 10. Inject cluster label for dashboard compatibility
+      - action: replace
+        target_label: cluster
+        replacement: central
+
+    kubernetes-service-endpoints:
+      enabled: true
+      honor_labels: true
+      kubernetes_sd_configs:
+      - role: endpointslice
+      relabel_configs:
+      # 1. Drop targets belonging to services annotated with prometheus.io/scrape = false
+      - action: drop
+        regex: "false"
+        source_labels:
+        - __meta_kubernetes_service_annotation_prometheus_io_scrape
+
+      # 2. Drop endpoints belonging to internal metrics components to avoid duplicate scraping
+      - action: drop
+        regex: coredns-metrics|argocd-metrics|prometheus-.*|.*node-exporter.*
+        source_labels:
+        - __meta_kubernetes_service_name
+
+      # 2b. Rename job label for kube-state-metrics targets to support standard recording rules
+      - action: replace
+        source_labels:
+        - __meta_kubernetes_service_name
+        regex: .*kube-state-metrics.*
+        target_label: job
+        replacement: kube-state-metrics
+
+      # 3. Overwrite address if prometheus.io/port annotation is set on the Service
+      - action: replace
+        regex: (.+?)(?::\d+)?;(\d+)
+        replacement: $1:$2
+        source_labels:
+        - __address__
+        - __meta_kubernetes_service_annotation_prometheus_io_port
+        target_label: __address__
+
+      # 4. Overwrite scheme if prometheus.io/scheme annotation is set on the Service
+      - action: replace
+        regex: (https?)
+        source_labels:
+        - __meta_kubernetes_service_annotation_prometheus_io_scheme
+        target_label: __scheme__
+
+      # 5. Overwrite path if prometheus.io/path annotation is set on the Service
+      - action: replace
+        regex: (.+)
+        source_labels:
+        - __meta_kubernetes_service_annotation_prometheus_io_path
+        target_label: __metrics_path__
+
+      # 6. Map all Service labels directly onto metrics for clean querying
+      - action: labelmap
+        regex: '__meta_kubernetes_service_label_(.+)'
+
+      # 7. Create clean, standard target labels for dashboards
+      - action: replace
+        source_labels:
+        - __meta_kubernetes_namespace
+        target_label: namespace
+      - action: replace
+        source_labels:
+        - __meta_kubernetes_service_name
+        target_label: service
+      - action: replace
+        source_labels:
+        - __meta_kubernetes_pod_node_name
+        target_label: node
+      - action: replace
+        source_labels:
+        - __meta_kubernetes_pod_name
+        target_label: pod
+      - action: replace
+        source_labels:
+        - __meta_kubernetes_endpointslice_port_name
+        target_label: port_name
+
+      # 8. Inject cluster label for dashboard compatibility
+      - action: replace
+        target_label: cluster
+        replacement: central
+
+    kubernetes-services:
+      enabled: true
+      honor_labels: true
+      metrics_path: /metrics
+      params:
+        module: null
+      kubernetes_sd_configs:
+      - role: service
+      relabel_configs:
+      # 0. Drop Node Exporter and kube-state-metrics services to avoid duplicate scraping
+      - action: drop
+        source_labels:
+        - __meta_kubernetes_service_name
+        regex: .*node-exporter.*|.*kube-state-metrics.*
+
+      # 1. Drop services annotated with prometheus.io/scrape = false
+      - action: drop
+        regex: "false"
+        source_labels:
+        - __meta_kubernetes_service_annotation_prometheus_io_scrape
+
+      # 2. Overwrite address if prometheus.io/port annotation is set on the Service
+      - action: replace
+        regex: (.+?)(?::\d+)?;(\d+)
+        replacement: $1:$2
+        source_labels:
+        - __address__
+        - __meta_kubernetes_service_annotation_prometheus_io_port
+        target_label: __address__
+
+      # 3. Overwrite scheme if prometheus.io/scheme annotation is set on the Service
+      - action: replace
+        regex: (https?)
+        source_labels:
+        - __meta_kubernetes_service_annotation_prometheus_io_scheme
+        target_label: __scheme__
+
+      # 4. Overwrite path if prometheus.io/path annotation is set on the Service
+      - action: replace
+        regex: (.+)
+        source_labels:
+        - __meta_kubernetes_service_annotation_prometheus_io_path
+        target_label: __metrics_path__
+
+      # 5. Map Service labels onto target labels
+      - action: labelmap
+        regex: '__meta_kubernetes_service_label_(.+)'
+
+      # 6. Extract namespace and service name
+      - action: replace
+        source_labels:
+        - __meta_kubernetes_namespace
+        target_label: namespace
+      - action: replace
+        source_labels:
+        - __meta_kubernetes_service_name
+        target_label: service
+
+      # 7. Inject cluster label for dashboard compatibility
+      - action: replace
+        target_label: cluster
+        replacement: central
+
+    node-exporter:
+      enabled: true
+      honor_labels: true
+      kubernetes_sd_configs:
+      - role: endpoints
+      relabel_configs:
+      - action: keep
+        source_labels:
+        - __meta_kubernetes_service_name
+        regex: .*node-exporter
+      - action: replace
+        target_label: job
+        replacement: node-exporter
+      - action: replace
+        target_label: cluster
+        replacement: central
+      metric_relabel_configs:
+      - action: labeldrop
+        regex: namespace|pod|service
+

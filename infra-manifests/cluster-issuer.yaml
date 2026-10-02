@@ -1,0 +1,62 @@
+# -----------------------------------------------------------------------------
+# No public domain assumed — observability.local resolves only via your
+# own /etc/hosts or DNS. This builds a private CA: a one-time self-signed
+# root, then a real ClusterIssuer ("internal-ca") that signs everything
+# else off that root. Grafana gets a valid, unique cert — you just need
+# to trust the one root CA once (browsers will warn until you import
+# ca.crt from the `internal-ca-root` secret below, in the cert-manager
+# namespace).
+#
+# If you get a real domain later and want public ACME certs instead,
+# replace everything below with a single Let's Encrypt ClusterIssuer,
+# keeping the name "internal-ca" so nothing else in this repo needs to
+# change:
+#
+# apiVersion: cert-manager.io/v1
+# kind: ClusterIssuer
+# metadata:
+#   name: internal-ca
+# spec:
+#   acme:
+#     server: https://acme-v02.api.letsencrypt.org/directory
+#     email: you@example.com
+#     privateKeySecretRef:
+#       name: letsencrypt-account-key
+#     solvers:
+#       - http01:
+#           ingress:
+#             ingressClassName: nginx
+# -----------------------------------------------------------------------------
+
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: selfsigned-bootstrap
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: internal-ca-root
+  namespace: cert-manager
+spec:
+  isCA: true
+  commonName: observability-cluster-internal-ca
+  secretName: internal-ca-root
+  duration: 87600h    # 10y
+  renewBefore: 720h   # 30d
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  issuerRef:
+    name: selfsigned-bootstrap
+    kind: ClusterIssuer
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: internal-ca
+spec:
+  ca:
+    secretName: internal-ca-root

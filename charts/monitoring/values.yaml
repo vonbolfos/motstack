@@ -1,0 +1,63 @@
+################################################################################
+# Namespace
+################################################################################
+createNamespace: false
+
+################################################################################
+# Network Policy
+################################################################################
+networkPolicy:
+  enabled: false
+
+################################################################################
+# kube-prometheus-stack dependency
+# Disabled: dashboards are imported as local JSON files instead
+################################################################################
+dashboards:
+  enabled: false
+
+  prometheusOperator:
+    enabled: false
+
+  prometheus:
+    enabled: true
+
+  kube-state-metrics:
+    enabled: false
+
+  prometheus-node-exporter:
+    enabled: true
+
+  grafana:
+    enabled: true
+    replicas: 0
+    defaultDashboardsEnabled: true
+
+################################################################################
+# Global
+################################################################################
+global:
+  namespace: kdp-mot
+  domain: gnssm.tolling.kapsch-dev.net
+  storageClass: managed-csi
+
+  hosts:
+    grafana: visuals
+    loki: logs
+    prometheus: metrics
+    tempo: traces
+    alloy: mot-gateway
+
+  backendServices:
+    grafana: mot-grafana
+    loki: mot-loki-gateway
+    prometheus: mot-prometheus-server
+    tempo: mot-tempo
+    alloy: mot-alloy
+
+  externalDNS:
+    enabled: true
+    target: azfw-gwc-1.gnssm.tolling.kapsch-dev.net
+
+  image:
+    pullPolicy: IfNotPresent

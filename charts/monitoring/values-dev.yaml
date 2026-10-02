@@ -1,0 +1,37 @@
+################################################################################
+# Global
+################################################################################
+global:
+  namespace: kdp-mot
+  domain: gnssm.tolling.kapsch-dev.net
+  storageClass: managed-csi
+  ingressClassName: nginx
+  clusterIssuer: letsencrypt-production
+
+################################################################################
+# Grafana - Development Overrides
+################################################################################
+grafana:
+  persistence:
+    size: 10Gi
+
+################################################################################
+# Prometheus - Development Overrides
+################################################################################
+prometheus:
+  server:
+    retention: 30d
+    persistentVolume:
+      size: 50Gi
+      
+################################################################################
+# Loki - Development Overrides
+################################################################################
+loki:
+  singleBinary:
+    persistence:
+      size: 100Gi
+
+  loki:
+    limits_config:
+      retention_period: 30d

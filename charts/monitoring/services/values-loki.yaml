@@ -1,0 +1,111 @@
+################################################################################
+# Loki
+################################################################################
+loki:
+  enabled: true
+
+################################################################################
+# Deployment Mode
+################################################################################
+  deploymentMode: SingleBinary
+
+################################################################################
+# Single Binary
+################################################################################
+  singleBinary:
+    replicas: 1
+
+    persistence:
+      enabled: true
+      storageClassName: longhorn
+      accessModes:
+        - ReadWriteOnce
+      size: 100Gi
+
+    resources:
+      requests:
+        cpu: 1
+        memory: 2Gi
+      limits:
+        cpu: 2
+        memory: 4Gi
+
+################################################################################
+# Disable Distributed Components
+################################################################################
+  backend:
+    replicas: 0
+
+  read:
+    replicas: 0
+
+  write:
+    replicas: 0
+
+################################################################################
+# Loki Configuration
+################################################################################
+  loki:
+    auth_enabled: false
+
+    commonConfig:
+      replication_factor: 1
+
+    storage:
+      type: filesystem
+
+    schemaConfig:
+      configs:
+        - from: "2025-01-01"
+          store: tsdb
+          object_store: filesystem
+          schema: v13
+          index:
+            prefix: index_
+            period: 24h
+
+    limits_config:
+      retention_period: 30d
+      volume_enabled: true
+      max_line_size: 1048576
+      max_line_size_truncate: true
+      # Default is 15. Many real pods (Cassandra, Kafka/Strimzi, Kyverno,
+      # ingress-nginx, etc.) carry more Kubernetes labels than that once
+      # namespace/pod/container/node/cluster/job are added on top, which
+      # made Loki reject entire push batches with HTTP 400 and silently
+      # drop all logs in that batch. Raised for headroom; also trimming
+      # which pod labels Alloy promotes to stream labels in values.yaml
+      # (see discovery.relabel "pod_logs") so cardinality stays sane.
+      max_label_names_per_series: 30
+
+################################################################################
+# Gateway
+################################################################################
+  gateway:
+    enabled: true
+
+    ingress:
+      enabled: false
+      ingressClassName: nginx
+
+      annotations:
+        cert-manager.io/cluster-issuer: letsencrypt-staging
+        external-dns.alpha.kubernetes.io/target: unused.observability.local
+
+      hosts:
+        - host: loki.observability.local
+          paths:
+            - path: /
+              pathType: Prefix
+
+      tls:
+        - secretName: loki-tls
+          hosts:
+            - loki.observability.local
+
+################################################################################
+# Monitoring
+################################################################################
+  monitoring:
+    selfMonitoring:
+      enabled: false

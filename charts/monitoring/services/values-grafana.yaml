@@ -1,0 +1,1405 @@
+grafana:
+  deploymentStrategy:
+    type: Recreate
+  enabled: true
+
+  image:
+    pullPolicy: IfNotPresent
+
+  replicas: 1
+
+  adminUser: admin
+  adminPassword: changeme
+
+  grafana.ini:
+    server:
+      domain: grafana.observability.local
+      root_url: https://grafana.observability.local
+
+    auth:
+      disable_login_form: false
+
+  persistence:
+    enabled: true
+    type: pvc
+    storageClassName: longhorn
+    accessModes:
+    - ReadWriteOnce
+    size: 10Gi
+
+  service:
+    type: ClusterIP
+    port: 80
+
+  ingress:
+    enabled: false
+    ingressClassName: nginx
+
+    annotations:
+      cert-manager.io/cluster-issuer: letsencrypt-staging
+
+    hosts:
+    - grafana.observability.local
+
+    tls:
+    - secretName: grafana-tls
+      hosts:
+      - grafana.observability.local
+
+  resources:
+    requests:
+      cpu: 1
+      memory: 2Gi
+    limits:
+      cpu: 2
+      memory: 4Gi
+
+  podSecurityContext:
+    fsGroup: 472
+
+  securityContext:
+    runAsUser: 472
+    runAsGroup: 472
+
+  serviceMonitor:
+    enabled: true
+
+  dashboardProviders:
+    dashboardproviders.yaml:
+      apiVersion: 1
+      providers:
+      - name: default
+        orgId: 1
+        folder: ""
+        type: file
+        disableDeletion: false
+        editable: true
+        options:
+          path: /var/lib/grafana/dashboards/default
+
+  sidecar:
+    dashboards:
+      enabled: true
+      searchNamespace: ALL
+
+      label: grafana_dashboard
+      labelValue: "1"
+
+      folderAnnotation: grafana_folder
+      provider:
+        allowUiUpdates: false
+        disableDelete: false
+        foldersFromFilesStructure: true
+
+    datasources:
+      enabled: true
+      defaultDatasourceEnabled: false
+      isDefaultDatasource: true
+
+  #############################################################################
+  # GRAFANA UNIFIED ALERTING
+  #############################################################################
+  alerting:
+
+    ###########################################################################
+    # CONTACT POINTS
+    ###########################################################################
+    contactpoints.yaml:
+      apiVersion: 1
+
+      contactPoints: []
+    policies.yaml:
+      apiVersion: 1
+
+      policies:
+      - orgId: 1
+        receiver: grafana-default-email
+        group_by:
+        - grafana_folder
+        - alertname
+        group_wait: 30s
+        group_interval: 5m
+        repeat_interval: 4h
+
+    ###########################################################################
+    # ALERT RULES
+    ###########################################################################
+    rules.yaml:
+      apiVersion: 1
+
+      groups:
+
+        #######################################################################
+        # KUBERNETES - CRITICAL
+        #######################################################################
+      - orgId: 1
+        name: kubernetes-critical
+        folder: KDP
+        interval: 1m
+
+        rules:
+
+            ###################################################################
+            # Node Not Ready
+            ###################################################################
+        - uid: kubernetes-node-not-ready
+          title: Kubernetes Node Not Ready
+          condition: C
+
+          data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: |
+                kube_node_status_condition{
+                  condition="Ready",
+                  status="true"
+                } == 0
+              instant: true
+              refId: A
+
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              expression: A
+              type: threshold
+              conditions:
+              - evaluator:
+                  params:
+                  - 0
+                  type: gt
+                operator:
+                  type: and
+                query:
+                  params:
+                  - C
+                reducer:
+                  params: []
+                  type: last
+                type: query
+
+          for: 5m
+          noDataState: Alerting
+          execErrState: Error
+
+          annotations:
+            summary: "Kubernetes node is not ready"
+            description: "Node {{ \"{{\" }} $values.A.Labels.node {{ \"}}\" }} has been NotReady for more than 5 minutes."
+
+          labels:
+            severity: critical
+            component: kubernetes
+
+            ###################################################################
+            # Pod CrashLoopBackOff
+            ###################################################################
+        - uid: kubernetes-pod-crashlooping
+          title: Kubernetes Pod CrashLooping
+          condition: C
+
+          data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: |
+                max by (namespace, pod, container) (
+                  kube_pod_container_status_waiting_reason{
+                    reason="CrashLoopBackOff"
+                  }
+                )
+              instant: true
+              refId: A
+
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              expression: A
+              type: threshold
+              conditions:
+              - evaluator:
+                  params:
+                  - 0
+                  type: gt
+                operator:
+                  type: and
+                query:
+                  params:
+                  - C
+                reducer:
+                  params: []
+                  type: last
+                type: query
+
+          for: 5m
+          noDataState: OK
+          execErrState: Error
+
+          annotations:
+            summary: "Pod is crash looping"
+            description: "Pod {{ \"{{\" }} $values.A.Labels.namespace {{ \"}}\" }}/{{ \"{{\" }} $values.A.Labels.pod {{ \"}}\" }} container {{ \"{{\" }} $values.A.Labels.container {{ \"}}\" }} is in CrashLoopBackOff."
+
+          labels:
+            severity: critical
+            component: kubernetes
+
+            ###################################################################
+            # Pod Not Ready
+            ###################################################################
+        - uid: kubernetes-pod-not-ready
+          title: Kubernetes Pod Not Ready
+          condition: C
+
+          data:
+          - refId: A
+            relativeTimeRange:
+              from: 900
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: |
+                sum by (namespace, pod) (
+                  kube_pod_status_ready{
+                    condition="true"
+                  } == 0
+                )
+              instant: true
+              refId: A
+
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              expression: A
+              type: threshold
+              conditions:
+              - evaluator:
+                  params:
+                  - 0
+                  type: gt
+                operator:
+                  type: and
+                query:
+                  params:
+                  - C
+                reducer:
+                  params: []
+                  type: last
+                type: query
+
+          for: 10m
+          noDataState: OK
+          execErrState: Error
+
+          annotations:
+            summary: "Pod is not ready"
+            description: "Pod {{ \"{{\" }} $values.A.Labels.namespace {{ \"}}\" }}/{{ \"{{\" }} $values.A.Labels.pod {{ \"}}\" }} has not been ready for more than 10 minutes."
+
+          labels:
+            severity: warning
+            component: kubernetes
+
+            ###################################################################
+            # Container Restarts
+            ###################################################################
+        - uid: kubernetes-container-restarts
+          title: Kubernetes Container Restarting
+          condition: C
+
+          data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: |
+                sum by (namespace, pod, container) (
+                  increase(
+                    kube_pod_container_status_restarts_total[10m]
+                  )
+                )
+              instant: true
+              refId: A
+
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              expression: A
+              type: threshold
+              conditions:
+              - evaluator:
+                  params:
+                  - 3
+                  type: gt
+                operator:
+                  type: and
+                query:
+                  params:
+                  - C
+                reducer:
+                  params: []
+                  type: last
+                type: query
+
+          for: 5m
+          noDataState: OK
+          execErrState: Error
+
+          annotations:
+            summary: "Container is restarting frequently"
+            description: "Container {{ \"{{\" }} $values.A.Labels.namespace {{ \"}}\" }}/{{ \"{{\" }} $values.A.Labels.pod {{ \"}}\" }}/{{ \"{{\" }} $values.A.Labels.container {{ \"}}\" }} restarted more than 3 times in 10 minutes."
+
+          labels:
+            severity: warning
+            component: kubernetes
+
+        #######################################################################
+        # KUBERNETES - WORKLOADS
+        #######################################################################
+      - orgId: 1
+        name: kubernetes-workloads
+        folder: Kubernetes
+        interval: 1m
+
+        rules:
+
+            ###################################################################
+            # Deployment Replicas Mismatch
+            ###################################################################
+        - uid: kubernetes-deployment-replicas-mismatch
+          title: Kubernetes Deployment Replicas Mismatch
+          condition: C
+
+          data:
+          - refId: A
+            relativeTimeRange:
+              from: 900
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: |
+                kube_deployment_spec_replicas
+                -
+                kube_deployment_status_replicas_available
+              instant: true
+              refId: A
+
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              expression: A
+              type: threshold
+              conditions:
+              - evaluator:
+                  params:
+                  - 0
+                  type: gt
+                operator:
+                  type: and
+                query:
+                  params:
+                  - C
+                reducer:
+                  params: []
+                  type: last
+                type: query
+
+          for: 10m
+          noDataState: OK
+          execErrState: Error
+
+          annotations:
+            summary: "Deployment replicas unavailable"
+            description: "Deployment {{ \"{{\" }} $values.A.Labels.namespace {{ \"}}\" }}/{{ \"{{\" }} $values.A.Labels.deployment {{ \"}}\" }} has unavailable replicas."
+
+          labels:
+            severity: warning
+            component: kubernetes
+
+            ###################################################################
+            # StatefulSet Replicas Mismatch
+            ###################################################################
+        - uid: kubernetes-statefulset-replicas-mismatch
+          title: Kubernetes StatefulSet Replicas Mismatch
+          condition: C
+
+          data:
+          - refId: A
+            relativeTimeRange:
+              from: 900
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: |
+                kube_statefulset_replicas
+                -
+                kube_statefulset_status_replicas_ready
+              instant: true
+              refId: A
+
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              expression: A
+              type: threshold
+              conditions:
+              - evaluator:
+                  params:
+                  - 0
+                  type: gt
+                operator:
+                  type: and
+                query:
+                  params:
+                  - C
+                reducer:
+                  params: []
+                  type: last
+                type: query
+
+          for: 10m
+          noDataState: OK
+          execErrState: Error
+
+          annotations:
+            summary: "StatefulSet replicas unavailable"
+            description: "StatefulSet {{ \"{{\" }} $values.A.Labels.namespace {{ \"}}\" }}/{{ \"{{\" }} $values.A.Labels.statefulset {{ \"}}\" }} does not have all replicas ready."
+
+          labels:
+            severity: warning
+            component: kubernetes
+
+            ###################################################################
+            # DaemonSet Pods Missing
+            ###################################################################
+        - uid: kubernetes-daemonset-mismatch
+          title: Kubernetes DaemonSet Pods Missing
+          condition: C
+
+          data:
+          - refId: A
+            relativeTimeRange:
+              from: 900
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: |
+                kube_daemonset_status_desired_number_scheduled
+                -
+                kube_daemonset_status_number_ready
+              instant: true
+              refId: A
+
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              expression: A
+              type: threshold
+              conditions:
+              - evaluator:
+                  params:
+                  - 0
+                  type: gt
+                operator:
+                  type: and
+                query:
+                  params:
+                  - C
+                reducer:
+                  params: []
+                  type: last
+                type: query
+
+          for: 10m
+          noDataState: OK
+          execErrState: Error
+
+          annotations:
+            summary: "DaemonSet pods missing"
+            description: "DaemonSet {{ \"{{\" }} $values.A.Labels.namespace {{ \"}}\" }}/{{ \"{{\" }} $values.A.Labels.daemonset {{ \"}}\" }} does not have all desired pods ready."
+
+          labels:
+            severity: warning
+            component: kubernetes
+
+        #######################################################################
+        # KUBERNETES - RESOURCES
+        #######################################################################
+      - orgId: 1
+        name: kubernetes-resources
+        folder: Kubernetes
+        interval: 1m
+
+        rules:
+
+            ###################################################################
+            # Container High Memory
+            ###################################################################
+        - uid: kubernetes-container-high-memory
+          title: Kubernetes Container High Memory
+          condition: C
+
+          data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: |
+                (
+                  container_memory_working_set_bytes{
+                    container!="",
+                    image!=""
+                  }
+                  /
+                  on(namespace, pod, container)
+                  kube_pod_container_resource_limits{
+                    resource="memory"
+                  }
+                ) * 100
+              instant: true
+              refId: A
+
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              expression: A
+              type: threshold
+              conditions:
+              - evaluator:
+                  params:
+                  - 90
+                  type: gt
+                operator:
+                  type: and
+                query:
+                  params:
+                  - C
+                reducer:
+                  params: []
+                  type: last
+                type: query
+
+          for: 10m
+          noDataState: OK
+          execErrState: Error
+
+          annotations:
+            summary: "Container memory usage above 90%"
+            description: "Container {{ \"{{\" }} $values.A.Labels.namespace {{ \"}}\" }}/{{ \"{{\" }} $values.A.Labels.pod {{ \"}}\" }}/{{ \"{{\" }} $values.A.Labels.container {{ \"}}\" }} is using more than 90% of its memory limit."
+
+          labels:
+            severity: warning
+            component: kubernetes
+
+            ###################################################################
+            # PVC Low Free Space
+            ###################################################################
+        - uid: kubernetes-pvc-low-space
+          title: Kubernetes PVC Low Free Space
+          condition: C
+
+          data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: |
+                (
+                  kubelet_volume_stats_available_bytes
+                  /
+                  kubelet_volume_stats_capacity_bytes
+                ) * 100
+              instant: true
+              refId: A
+
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              expression: A
+              type: threshold
+              conditions:
+              - evaluator:
+                  params:
+                  - 10
+                  type: lt
+                operator:
+                  type: and
+                query:
+                  params:
+                  - C
+                reducer:
+                  params: []
+                  type: last
+                type: query
+
+          for: 10m
+          noDataState: OK
+          execErrState: Error
+
+          annotations:
+            summary: "PVC has less than 10% free space"
+            description: "PVC {{ \"{{\" }} $values.A.Labels.namespace {{ \"}}\" }}/{{ \"{{\" }} $values.A.Labels.persistentvolumeclaim {{ \"}}\" }} has less than 10% free space."
+
+          labels:
+            severity: critical
+            component: storage
+
+        #######################################################################
+        # MONITORING STACK
+        #######################################################################
+      - orgId: 1
+        name: monitoring-stack
+        folder: MOT
+        interval: 1m
+
+        rules:
+
+            ###################################################################
+            # Prometheus Target Down
+            ###################################################################
+        - uid: prometheus-target-down
+          title: Prometheus Target Down
+          condition: C
+
+          data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: |
+                up{port_name=~"http-metrics|metrics|http|prometheus|service", prometheus_io_service_monitor!="false"}
+              instant: true
+              refId: A
+
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              expression: A
+              type: threshold
+              conditions:
+              - evaluator:
+                  params:
+                  - 1
+                  type: lt
+                operator:
+                  type: and
+                query:
+                  params:
+                  - C
+                reducer:
+                  params: []
+                  type: last
+                type: query
+
+          for: 5m
+          noDataState: OK
+          execErrState: Error
+
+          annotations:
+            summary: "Prometheus scrape target is down"
+            description: "Prometheus target {{ \"{{\" }} $values.A.Labels.instance {{ \"}}\" }} for job {{ \"{{\" }} $values.A.Labels.job {{ \"}}\" }} has been down for more than 5 minutes."
+
+          labels:
+            severity: critical
+            component: prometheus
+
+            ###########################################    
+            #Loki Target Down#
+            ###########################################
+        - uid: loki-target-down
+          title: Loki Target Down
+          condition: C
+
+          data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: |
+                up{service="mot-loki", port_name=~"http-metrics|metrics|http|prometheus|service", prometheus_io_service_monitor!="false"}
+              instant: true
+              refId: A
+
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              expression: A
+              type: threshold
+              conditions:
+              - evaluator:
+                  type: lt
+                  params: [1]
+                operator:
+                  type: and
+                query:
+                  params: [C]
+                reducer:
+                  type: last
+                type: query
+
+          for: 5m
+
+          noDataState: OK
+          execErrState: Error
+
+          annotations:
+            summary: "Loki target is down"
+            description: >
+              Loki instance {{ "{{" }} $values.A.Labels.instance {{ "}}" }} has been unreachable for more than 5 minutes.
+
+          labels:
+            severity: critical
+            component: loki
+
+            ###########################################    
+            #Grafana Down#
+            ###########################################
+        - uid: grafana-target-down
+          title: Grafana Target Down
+          condition: C
+
+          data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: |
+                up{service="mot-grafana", port_name=~"http-metrics|metrics|http|prometheus|service", prometheus_io_service_monitor!="false"}
+              instant: true
+              refId: A
+
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              expression: A
+              type: threshold
+              conditions:
+              - evaluator:
+                  type: lt
+                  params: [1]
+                operator:
+                  type: and
+                query:
+                  params: [C]
+                reducer:
+                  type: last
+                type: query
+
+          for: 5m
+
+          noDataState: OK
+          execErrState: Error
+
+          annotations:
+            summary: "Grafana target is down"
+            description: >
+              Grafana instance {{ "{{" }} $values.A.Labels.instance {{ "}}" }} has been unreachable for more than 5 minutes.
+
+          labels:
+            severity: critical
+            component: grafana
+
+            ###########################################    
+            #Alloy-Central Down#
+            ###########################################
+        - uid: alloy-central-down
+          title: Alloy Central Down
+          condition: C
+
+          data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: |
+                up{service="mot-alloy", port_name=~"http-metrics|metrics|http|prometheus|service", prometheus_io_service_monitor!="false"}
+              instant: true
+              refId: A
+
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              expression: A
+              type: threshold
+              conditions:
+              - evaluator:
+                  type: lt
+                  params: [1]
+                operator:
+                  type: and
+                query:
+                  params: [C]
+                reducer:
+                  type: last
+                type: query
+
+          for: 5m
+
+          noDataState: OK
+          execErrState: Error
+
+          annotations:
+            summary: "Alloy agent is down"
+            description: >
+              Alloy instance {{ "{{" }} $values.A.Labels.instance {{ "}}" }} has been unreachable for more than 5 minutes.
+
+          labels:
+            severity: critical
+            component: alloy-central
+
+            ###################################################################
+            # Prometheus Storage Low
+            ###################################################################
+        - uid: kubernetes-prometheus-storage-low
+          title: Prometheus Storage Low
+          condition: C
+
+          data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: |
+                100 * (
+                  kubelet_volume_stats_available_bytes{
+                    persistentvolumeclaim="mot-prometheus-server"
+                  }
+                  /
+                  kubelet_volume_stats_capacity_bytes{
+                    persistentvolumeclaim="mot-prometheus-server"
+                  }
+                )
+              instant: true
+              refId: A
+
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              expression: A
+              type: threshold
+              conditions:
+              - evaluator:
+                  params:
+                  - 15
+                  type: lt
+                operator:
+                  type: and
+                query:
+                  params:
+                  - C
+                reducer:
+                  params: []
+                  type: last
+                type: query
+
+          for: 5m
+          noDataState: OK
+          execErrState: Error
+
+          annotations:
+            summary: "[CRITICAL] Prometheus Storage is low"
+            description: "Prometheus Persistent Volume has less than 15% space remaining (currently {{ \"{{\" }} printf \"%.2f\" $values.A.Value {{ \"}}\" }}% free)."
+            priority: "P1"
+
+          labels:
+            severity: critical
+            component: storage
+            priority: P1
+
+            ###################################################################
+            # Grafana Storage Low
+            ###################################################################
+        - uid: kubernetes-grafana-storage-low
+          title: Grafana Storage Low
+          condition: C
+
+          data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: |
+                100 * (
+                  kubelet_volume_stats_available_bytes{
+                    persistentvolumeclaim="mot-grafana"
+                  }
+                  /
+                  kubelet_volume_stats_capacity_bytes{
+                    persistentvolumeclaim="mot-grafana"
+                  }
+                )
+              instant: true
+              refId: A
+
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              expression: A
+              type: threshold
+              conditions:
+              - evaluator:
+                  params:
+                  - 15
+                  type: lt
+                operator:
+                  type: and
+                query:
+                  params:
+                  - C
+                reducer:
+                  params: []
+                  type: last
+                type: query
+
+          for: 5m
+          noDataState: OK
+          execErrState: Error
+
+          annotations:
+            summary: "[CRITICAL] Grafana Storage is low"
+            description: "Grafana Persistent Volume has less than 15% space remaining (currently {{ \"{{\" }} printf \"%.2f\" $values.A.Value {{ \"}}\" }}% free)."
+            priority: "P1"
+
+          labels:
+            severity: critical
+            component: storage
+            priority: P1
+
+            ###################################################################
+            # Prometheus Remote Write Failures High
+            ###################################################################
+        - uid: mot-prometheus-remote-write-failures
+          title: Prometheus Remote Write Failures High
+          condition: C
+
+          data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: |
+                sum by (cluster) (rate(prometheus_remote_storage_samples_failed_total[5m]))
+              instant: true
+              refId: A
+
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              expression: A
+              type: threshold
+              conditions:
+              - evaluator:
+                  params: [10]
+                  type: gt
+                operator:
+                  type: and
+                query:
+                  params: [C]
+                reducer:
+                  type: last
+                type: query
+
+          for: 5m
+
+          noDataState: OK
+          execErrState: Error
+
+          annotations:
+            summary: "[CRITICAL] Prometheus Remote Write Sample Failures High"
+            description: >
+              Prometheus remote write metrics pipeline in cluster {{ "{{" }} $values.A.Labels.cluster {{ "}}" }} is failing at {{ "{{" }} printf "%.2f" $values.A.Value {{ "}}" }} samples/sec.
+            priority: "P1"
+
+          labels:
+            severity: critical
+            component: pipeline
+            priority: P1
+
+            ###################################################################
+            # Loki Write Failures High
+            ###################################################################
+        - uid: mot-loki-write-failures-high
+          title: Loki Write Failures High
+          condition: C
+
+          data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: |
+                sum by (cluster, status_code) (rate(loki_write_request_duration_seconds_count{status_code!~"2.."}[5m]))
+              instant: true
+              refId: A
+
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              expression: A
+              type: threshold
+              conditions:
+              - evaluator:
+                  params: [5]
+                  type: gt
+                operator:
+                  type: and
+                query:
+                  params: [C]
+                reducer:
+                  type: last
+                type: query
+
+          for: 5m
+
+          noDataState: OK
+          execErrState: Error
+
+          annotations:
+            summary: "[CRITICAL] Loki Log Shipping Write Failures High"
+            description: >
+              Loki log shipping pipeline in cluster {{ "{{" }} $values.A.Labels.cluster {{ "}}" }} is experiencing HTTP {{ "{{" }} $values.A.Labels.status_code {{ "}}" }} write failures at {{ "{{" }} printf "%.2f" $values.A.Value {{ "}}" }} req/sec.
+            priority: "P1"
+
+          labels:
+            severity: critical
+            component: pipeline
+            priority: P1
+
+            ###################################################################
+            # Alloy Queue Saturation High
+            ###################################################################
+        - uid: mot-alloy-queue-saturation-high
+          title: Alloy Queue Saturation High
+          condition: C
+
+          data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: |
+                ((max by (instance) (alloy_queue_length / alloy_queue_capacity)) * 100)
+              instant: true
+              refId: A
+
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              expression: A
+              type: threshold
+              conditions:
+              - evaluator:
+                  params: [70]
+                  type: gt
+                operator:
+                  type: and
+                query:
+                  params: [C]
+                reducer:
+                  type: last
+                type: query
+
+          for: 5m
+
+          noDataState: OK
+          execErrState: Error
+
+          annotations:
+            summary: "[WARNING] Alloy Exporter Queue Saturation High"
+            description: >
+              Alloy exporter queue on instance {{ "{{" }} $values.A.Labels.instance {{ "}}" }} is {{ "{{" }} printf "%.2f" $values.A.Value {{ "}}" }}% full (> 70% capacity limit).
+            priority: "P3"
+
+          labels:
+            severity: warning
+            component: alloy-collector
+            priority: P3
+
+            ###################################################################
+            # Alloy High Memory Usage (Remote)
+            ###################################################################
+        - uid: mot-alloy-high-memory-usage
+          title: Remote Alloy High Memory Usage
+          condition: C
+
+          data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: |
+                alloy_resources_process_resident_memory_bytes{cluster!="central"}
+              instant: true
+              refId: A
+
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              expression: A
+              type: threshold
+              conditions:
+              - evaluator:
+                  params: [2040109465]
+                  type: gt
+                operator:
+                  type: and
+                query:
+                  params: [C]
+                reducer:
+                  type: last
+                type: query
+
+          for: 10m
+
+          noDataState: OK
+          execErrState: Error
+
+          annotations:
+            summary: "[WARNING] Remote Alloy Memory Footprint High"
+            description: >
+              Remote Alloy instance {{ "{{" }} $values.A.Labels.instance {{ "}}" }} in cluster {{ "{{" }} $values.A.Labels.cluster {{ "}}" }} resident RAM usage exceeds 1.9GB threshold.
+            priority: "P3"
+
+          labels:
+            severity: warning
+            component: alloy-collector
+            priority: P3
+
+            ###################################################################
+            # Central Alloy Ingress Saturation (8+ Replicas)
+            ###################################################################
+        - uid: mot-alloy-central-replicas-high
+          title: Central Alloy Ingress High Replica Count
+          condition: C
+
+          data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: |
+                kube_deployment_status_replicas_available{deployment="mot-alloy", namespace="kdp-mot"}
+              instant: true
+              refId: A
+
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              expression: A
+              type: threshold
+              conditions:
+              - evaluator:
+                  params: [8]
+                  type: gte
+                operator:
+                  type: and
+                query:
+                  params: [C]
+                reducer:
+                  type: last
+                type: query
+
+          for: 5m
+
+          noDataState: OK
+          execErrState: Error
+
+          annotations:
+            summary: "[WARNING] Central Alloy Ingress Saturation High"
+            description: >
+              Central Alloy ingress deployment has scaled to {{ "{{" }} printf "%.0f" $values.A.Value {{ "}}" }} replicas (>= 8 threshold), indicating heavy telemetry ingress saturation.
+            priority: "P3"
+
+          labels:
+            severity: warning
+            component: alloy-ingress
+            priority: P3
+
+            ###################################################################
+            # Slow Scrape Job Detected
+            ###################################################################
+        - uid: mot-slow-scrape-job-detected
+          title: Slow Scrape Job Detected
+          condition: C
+
+          data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: |
+                max by (job) (scrape_duration_seconds)
+              instant: true
+              refId: A
+
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              expression: A
+              type: threshold
+              conditions:
+              - evaluator:
+                  params: [10]
+                  type: gt
+                operator:
+                  type: and
+                query:
+                  params: [C]
+                reducer:
+                  type: last
+                type: query
+
+          for: 10m
+
+          noDataState: OK
+          execErrState: Error
+
+          annotations:
+            summary: "[WARNING] Prometheus Scrape Duration High"
+            description: >
+              Scrape job {{ "{{" }} $values.A.Labels.job {{ "}}" }} scrape duration is currently {{ "{{" }} printf "%.2f" $values.A.Value {{ "}}" }} seconds (> 10s limit).
+            priority: "P3"
+
+          labels:
+            severity: warning
+            component: prometheus
+            priority: P3
+
+            ###################################################################
+            # Grafana Alert Evaluation Failures
+            ###################################################################
+        - uid: mot-grafana-alert-evaluation-failures
+          title: Grafana Alert Evaluation Failures
+          condition: C
+
+          data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: |
+                sum(rate(grafana_alerting_rule_evaluation_failures_total[5m]))
+              instant: true
+              refId: A
+
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              expression: A
+              type: threshold
+              conditions:
+              - evaluator:
+                  params: [0]
+                  type: gt
+                operator:
+                  type: and
+                query:
+                  params: [C]
+                reducer:
+                  type: last
+                type: query
+
+          for: 5m
+
+          noDataState: OK
+          execErrState: Error
+
+          annotations:
+            summary: "[WARNING] Grafana Alerting Rule Evaluation Failures"
+            description: >
+              Grafana alert evaluation engine is experiencing evaluation failures at {{ "{{" }} printf "%.2f" $values.A.Value {{ "}}" }} failures/sec.
+            priority: "P3"
+
+          labels:
+            severity: warning
+            component: grafana
+            priority: P3
+
+            ###################################################################
+            # Alloy Container Restarted
+            ###################################################################
+        - uid: mot-alloy-container-restarted
+          title: Alloy Container Restarted
+          condition: C
+
+          data:
+          - refId: A
+            relativeTimeRange:
+              from: 3600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: |
+                increase(kube_pod_container_status_restarts_total{container=~".*alloy.*"}[1h])
+              instant: true
+              refId: A
+
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              expression: A
+              type: threshold
+              conditions:
+              - evaluator:
+                  params: [0]
+                  type: gt
+                operator:
+                  type: and
+                query:
+                  params: [C]
+                reducer:
+                  type: last
+                type: query
+
+          for: 0m
+
+          noDataState: OK
+          execErrState: Error
+
+          annotations:
+            summary: "[INFO] Alloy Container Restarted Recently"
+            description: >
+              Alloy container {{ "{{" }} $values.A.Labels.pod {{ "}}" }} restarted {{ "{{" }} printf "%.0f" $values.A.Value {{ "}}" }} times in the last hour.
+            priority: "P5"
+
+          labels:
+            severity: info
+            component: alloy-collector
+            priority: P5
+
+

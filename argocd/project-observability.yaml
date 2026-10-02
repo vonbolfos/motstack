@@ -5,16 +5,18 @@ metadata:
   namespace: argocd
 spec:
   description: >
-    Storage plus the Grafana/Prometheus/Loki/Tempo stack, deployed onto
-    the Talos cluster from ArgoCD running on the workstation VM. Scoped
-    so a misconfigured Application here can't touch anything outside
-    these namespaces on either cluster.
+    Storage, ingress/TLS, and the monitoring stack, deployed onto the
+    Talos cluster from ArgoCD running on the workstation VM. Scoped so a
+    misconfigured Application here can't touch anything outside these
+    namespaces on either cluster.
 
   sourceRepos:
     - https://github.com/vonbolfos/motstack.git
     - https://charts.longhorn.io
     - https://prometheus-community.github.io/helm-charts
     - https://grafana-community.github.io/helm-charts
+    - https://charts.jetstack.io
+    - https://kubernetes.github.io/ingress-nginx
 
   destinations:
     - namespace: argocd
@@ -23,7 +25,16 @@ spec:
       name: observability-cluster
     - namespace: observability
       name: observability-cluster
+      # ^ the old observability-stack's namespace — safe to remove this
+      #   entry once that Application is fully torn down and you've
+      #   confirmed nothing's still using it.
     - namespace: kube-system
+      name: observability-cluster
+    - namespace: cert-manager
+      name: observability-cluster
+    - namespace: ingress-nginx
+      name: observability-cluster
+    - namespace: monitoring
       name: observability-cluster
 
   namespaceResourceWhitelist:
@@ -31,7 +42,6 @@ spec:
       kind: "*"
     - group: argoproj.io
       kind: Application
-
   clusterResourceWhitelist:
     - group: "*"
       kind: "*"
@@ -45,4 +55,12 @@ spec:
       kind: ValidatingWebhookConfiguration
     - group: admissionregistration.k8s.io
       kind: MutatingWebhookConfiguration
+    # Added proactively, not reactively — we've now hit the "wildcard
+    # doesn't actually cover this cluster-scoped kind" wall three times
+    # (argoproj.io, apiextensions.k8s.io, rbac.authorization.k8s.io +
+    # admissionregistration.k8s.io together). IngressClass is new to
+    # this repo with ingress-nginx; adding it explicitly up front rather
+    # than waiting to find out the hard way a fourth time.
+    - group: networking.k8s.io
+      kind: IngressClass
   clusterResourceBlacklist: []

@@ -1,0 +1,39 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: ingress-nginx
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-20"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: observability
+  source:
+    repoURL: https://kubernetes.github.io/ingress-nginx
+    chart: ingress-nginx
+    targetRevision: ">=4.11.0"
+    helm:
+      values: |
+        controller:
+          # 2 workers -> 2 for real redundancy on the ingress path
+          replicaCount: 2
+          # No cloud LoadBalancer on bare VMs. hostNetwork puts nginx
+          # directly on ports 80/443 on each worker's IP — point DNS
+          # (or /etc/hosts) at either worker IP.
+          hostNetwork: true
+          service:
+            type: ClusterIP
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+  destination:
+    name: observability-cluster
+    namespace: ingress-nginx
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

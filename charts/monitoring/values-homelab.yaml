@@ -1,0 +1,103 @@
+################################################################################
+# Homelab overlay — replaces values-dev.yaml/values-prod.yaml's role for
+# this deployment. Those two files are left untouched as reference to the
+# actual work config this chart was built for; this file is what the
+# ArgoCD Application in argocd/apps/10-monitoring.yaml actually loads.
+#
+# What changed from the original chart, and why:
+#   - global.storageClass: managed-csi (Azure Disk) -> longhorn
+#   - global.domain: real work domain -> observability.local (resolve
+#     this yourself via /etc/hosts or your own DNS, same as any other
+#     .local-style homelab domain)
+#   - global.clusterIssuer: letsencrypt-production -> internal-ca (a
+#     self-signed CA chain, since there's no public domain here to do
+#     real ACME validation against — see infra-manifests/cluster-issuer/)
+#   - global.externalDNS.enabled: true -> false (no ExternalDNS here)
+#   - alloy.enabled: true -> false — this chart's Alloy config is built
+#     for a multi-cluster hub-and-spoke topology (autoscaling 4-10
+#     replicas, configured to receive telemetry pushed from *other*
+#     remote clusters) that doesn't apply to one homelab cluster, and
+#     would be wildly oversized for 2 workers. kube-state-metrics (which
+#     piggybacked on Alloy in the original chart) comes back via
+#     dashboards.kube-state-metrics.enabled below instead — the exact
+#     path our previous stack used successfully.
+################################################################################
+
+createNamespace: false   # ArgoCD's CreateNamespace=true syncOption handles this instead
+
+networkPolicy:
+  enabled: false
+
+# kube-prometheus-stack (aliased "dashboards" in Chart.yaml) — used here
+# only for its node-exporter DaemonSet, kube-state-metrics, and bundled
+# CRDs/dashboards. NOT the real Prometheus server (that's the separate
+# `prometheus` dependency below) and NOT the Operator (prometheusOperator
+# stays off — no ServiceMonitor reconciliation happening here, the
+# standalone prometheus chart uses plain scrape_configs instead).
+dashboards:
+  enabled: true
+
+  prometheusOperator:
+    enabled: false
+
+  prometheus:
+    enabled: true
+
+  # Flipped from the original chart's `false` — this is kube-state-metrics'
+  # replacement path now that Alloy (which provided it originally) is off.
+  kube-state-metrics:
+    enabled: true
+
+  prometheus-node-exporter:
+    enabled: true
+
+  grafana:
+    enabled: true
+    replicas: 0   # the standalone grafana: dependency below is the real Grafana
+    defaultDashboardsEnabled: true
+
+# Explicit per-dependency toggles (Chart.yaml's condition: fields) —
+# set directly rather than relying on each services/values-*.yaml file's
+# own self-declared `enabled: true` to be merged in the right order.
+prometheus:
+  enabled: true
+grafana:
+  enabled: true
+loki:
+  enabled: true
+tempo:
+  enabled: true
+alloy:
+  enabled: false
+
+################################################################################
+# Global
+################################################################################
+global:
+  namespace: monitoring
+  domain: observability.local
+  storageClass: longhorn
+  ingressClassName: nginx
+  clusterIssuer: internal-ca
+
+  hosts:
+    grafana: grafana
+    # loki/prometheus/tempo/alloy host entries removed — their ingress
+    # templates were removed too (see README note); Grafana is the one
+    # front door, same pattern as the rest of this repo. Reach Loki/
+    # Tempo/Prometheus through Grafana's pre-wired datasources, not
+    # directly.
+
+  backendServices:
+    # VERIFY after first sync: kubectl -n monitoring get svc
+    # Assumes the ArgoCD Application (and therefore the Helm release) is
+    # named "monitoring", giving the grafana subchart's default service
+    # name "monitoring-grafana". Update this if your release name or the
+    # chart's naming convention gives something different.
+    grafana: monitoring-grafana
+
+  externalDNS:
+    enabled: false
+
+  image:
+    pullPolicy: IfNotPresent

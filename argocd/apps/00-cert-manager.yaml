@@ -1,0 +1,35 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cert-manager
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-20"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: observability
+  source:
+    repoURL: https://charts.jetstack.io
+    chart: cert-manager
+    targetRevision: ">=1.16.0"
+    helm:
+      values: |
+        crds:
+          enabled: true
+        # (Recent chart versions renamed the old `installCRDs: true` flag
+        # to `crds.enabled`. If ArgoCD reports CRD errors on first sync,
+        # check `helm show values jetstack/cert-manager` for the pinned
+        # version and use whichever flag it expects.)
+  destination:
+    # The Talos cluster, by its registered name — same as every other
+    # Application in this repo that deploys actual workloads.
+    name: observability-cluster
+    namespace: cert-manager
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true   # cert-manager's CRDs are large; SSA avoids the 3-way-merge annotation size limit we already hit once with kube-prometheus-stack's CRDs

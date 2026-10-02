@@ -1,0 +1,26 @@
+# NOTE: prometheusOperator is disabled in this deployment (see
+# values-homelab.yaml) — nothing currently reconciles ServiceMonitor
+# objects into real scrape config. This CRD object is valid but inert
+# until/unless the Operator gets enabled later. The standalone
+# `prometheus` chart uses classic scrape_configs instead; CoreDNS
+# scraping via that path isn't wired up as part of this migration —
+# check services/values-prometheus.yaml's extraScrapeConfigs if you
+# want it working now.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: coredns
+  namespace: monitoring
+  labels:
+    release: monitoring
+spec:
+  namespaceSelector:
+    matchNames:
+      - kube-system
+  selector:
+    matchLabels:
+      app: coredns
+  endpoints:
+    - port: metrics
+      interval: 30s
+      path: /metrics
